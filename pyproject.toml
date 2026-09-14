@@ -1,0 +1,34 @@
+[project]
+name = "aevum-ai"
+version = "0.1.0"
+description = "Decision analysis for the Aevum platform, built on Strands Agents."
+requires-python = ">=3.11"
+dependencies = [
+  # openai: the NVIDIA NIM endpoint is OpenAI-compatible, and Strands'
+  # OpenAIModel is what talks to it. anthropic: the alternate provider.
+  "strands-agents[openai,anthropic]>=1.55,<2",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "httpx>=0.27",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+aevum-ai = "aevum_ai.app:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+# The four analysis jobs are coroutines; auto mode saves marking every test.
+asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]
