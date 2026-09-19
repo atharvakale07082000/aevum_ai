@@ -65,6 +65,20 @@ class Settings(BaseSettings):
 
     request_timeout_seconds: float = 20.0
 
+    #: How long one analysis is reused for the same decision version. The key
+    #: already changes the moment the decision does (see cache.py), so this is
+    #: a backstop against unbounded reuse, not what keeps the panels fresh.
+    #: 0 disables the cache.
+    cache_ttl_seconds: float = 300.0
+    #: Upper bound on cached entries (states and panel results together),
+    #: evicted least-recently-used first.
+    cache_max_entries: int = 512
+
+    #: Pause between chunks when the streamed Ask answer is templated (no
+    #: model). Paced so the deterministic path looks and behaves like a model
+    #: streaming, which keeps the incremental UI exercised without a key.
+    ask_stream_chunk_delay_ms: int = 120
+
 
 @lru_cache
 def settings() -> Settings:

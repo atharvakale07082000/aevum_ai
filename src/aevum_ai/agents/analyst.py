@@ -18,7 +18,11 @@ they never lie.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
+import threading
+from collections.abc import AsyncIterator
 from typing import Any
 
 from strands import Agent
@@ -318,7 +322,21 @@ async def report(metrics: DecisionMetrics, recent: str) -> ConsensusReport:
 
 # ---------------------------------------------------------------------- ask
 
-async def ask(metrics: DecisionMetrics, decision: dict[str, Any], recent: str, question: str) -> AskAnswer:
+NO_MODEL_ANSWER = (
+    "Answering questions needs a language model, and none is configured for this "
+    "deployment. The panel above still shows the measured state of the decision."
+)
+FAILED_ANSWER = "That question could not be answered right now. Try again in a moment."
+
+
+def _ask_context(
+    metrics: DecisionMetrics, decision: dict[str, Any], recent: str, question: str
+) -> tuple[list[str], str]:
+    """What an answer is grounded on, and the prompt — shared by /ask and /ask/stream.
+
+    One builder for both paths so the streamed answer is held to exactly the
+    same no-invented-numbers rule as the whole one.
+    """
     options_detail = "\n".join(
         f"- {o['label']}: {o.get('description') or '(no description given)'}"
         for o in (decision.get("options") or [])
@@ -329,25 +347,27 @@ async def ask(metrics: DecisionMetrics, decision: dict[str, Any], recent: str, q
         f"{metrics.ballots_cast} ballot(s) from {metrics.eligible_voters} eligible participant(s)",
         f"status {metrics.status}",
     ]
-
-    agent = _agent()
-    if agent is None:
-        return AskAnswer(
-            decisionId=metrics.decision_id,
-            source="deterministic",
-            answer=(
-                "Answering questions needs a language model, and none is configured for this "
-                "deployment. The panel above still shows the measured state of the decision."
-            ),
-            groundedOn=grounded,
-        )
-
     prompt = (
         f"{_state_block(metrics, options_detail, recent)}\n"
         f"A participant asks: {question!r}\n\n"
         "Answer using only the state above. If it does not contain the answer, say so plainly "
         "and name what would be needed."
     )
+    return grounded, prompt
+
+
+async def ask(metrics: DecisionMetrics, decision: dict[str, Any], recent: str, question: str) -> AskAnswer:
+    grounded, prompt = _ask_context(metrics, decision, recent, question)
+
+    agent = _agent()
+    if agent is None:
+        return AskAnswer(
+            decisionId=metrics.decision_id,
+            source="deterministic",
+            answer=NO_MODEL_ANSWER,
+            groundedOn=grounded,
+        )
+
     try:
         result = await agent.invoke_async(prompt, structured_output_model=_Answer)
         return AskAnswer(
@@ -358,6 +378,89 @@ async def ask(metrics: DecisionMetrics, decision: dict[str, Any], recent: str, q
         log.warning("ask failed: %s", exc)
         return AskAnswer(
             decisionId=metrics.decision_id, source="deterministic",
-            answer="That question could not be answered right now. Try again in a moment.",
+            answer=FAILED_ANSWER,
             groundedOn=grounded,
         )
+
+
+def _chunks(text: str, words: int = 3) -> list[str]:
+    """Split into small word groups that concatenate back to exactly `text`."""
+    parts = re.findall(r"\S+\s*", text)
+    lead = text[: len(text) - len(text.lstrip())]
+    groups = ["".join(parts[i:i + words]) for i in range(0, len(parts), words)]
+    if groups and lead:
+        groups[0] = lead + groups[0]
+    return groups or ([text] if text else [])
+
+
+async def ask_stream(
+    metrics: DecisionMetrics, decision: dict[str, Any], recent: str, question: str
+) -> AsyncIterator[tuple[str, Any]]:
+    """The Ask answer as it is produced: ``("token", str)`` events, then ``("done", AskAnswer)``.
+
+    With no model the templated answer is chunked and paced, so the interface
+    exercises exactly the same incremental path it does against a real model.
+
+    With a model, text deltas from Strands' ``stream_async`` are forwarded as they
+    arrive. This asks for plain text rather than structured output — `_Answer` is
+    a single string field, and a structured-output tool call streams its
+    argument JSON rather than readable text. The prompt, and so the rule against
+    stating any number not in the DECISION STATE block, is the one `ask` uses.
+
+    Closing this generator (the client disconnected, or the request task was
+    cancelled) sets the invocation's cancel signal and closes the model stream,
+    so the provider call stops instead of running on unread.
+    """
+    grounded, prompt = _ask_context(metrics, decision, recent, question)
+
+    agent = _agent()
+    if agent is None:
+        delay = max(settings().ask_stream_chunk_delay_ms, 0) / 1000
+        for i, chunk in enumerate(_chunks(NO_MODEL_ANSWER)):
+            if i and delay:
+                await asyncio.sleep(delay)
+            yield ("token", chunk)
+        yield ("done", AskAnswer(
+            decisionId=metrics.decision_id, source="deterministic",
+            answer=NO_MODEL_ANSWER, groundedOn=grounded,
+        ))
+        return
+
+    cancel = threading.Event()
+    parts: list[str] = []
+    finished = False
+    stream = agent.stream_async(prompt, cancel_signal=cancel)
+    try:
+        try:
+            async for event in stream:
+                text = event.get("data") if isinstance(event, dict) else None
+                if isinstance(text, str) and text:
+                    parts.append(text)
+                    yield ("token", text)
+            finished = True
+        except Exception as exc:  # noqa: BLE001 — a model failure must not fail the panel
+            log.warning("ask stream failed: %s", exc)
+            finished = True
+            yield ("done", AskAnswer(
+                decisionId=metrics.decision_id, source="deterministic",
+                answer=FAILED_ANSWER, groundedOn=grounded,
+            ))
+            return
+    finally:
+        if not finished:
+            # Reached on GeneratorExit / CancelledError: the reader is gone.
+            cancel.set()
+        await stream.aclose()
+
+    answer = "".join(parts).strip()
+    if not answer:
+        # A reasoning model can spend its whole budget thinking and emit nothing.
+        log.warning("ask stream produced no text")
+        yield ("done", AskAnswer(
+            decisionId=metrics.decision_id, source="deterministic",
+            answer=FAILED_ANSWER, groundedOn=grounded,
+        ))
+        return
+    yield ("done", AskAnswer(
+        decisionId=metrics.decision_id, source="model", answer=answer, groundedOn=grounded,
+    ))

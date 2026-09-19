@@ -158,7 +158,14 @@ def analyse(
     runner_up = standings[1] if len(standings) > 1 and leading else None
     margin = (leading.share - runner_up.share) if (leading and runner_up) else (100.0 if leading else 0.0)
 
-    eligible = [p for p in participants if _role_at_least(p.get("role"), "MEMBER")]
+    # Only ACTIVE participants count. Someone removed from the workspace keeps
+    # their ballot but can no longer vote, so counting them as an eligible
+    # non-voter would understate turnout. A missing status is treated as
+    # ACTIVE, which is what older payloads implied.
+    eligible = [
+        p for p in participants
+        if _role_at_least(p.get("role"), "MEMBER") and (p.get("status") or "ACTIVE") == "ACTIVE"
+    ]
     voters = {b["userId"] for b in (ballots or [])}
     ballots_cast = len(voters) if ballots is not None else sum(s.vote_count for s in standings)
     participation = (ballots_cast / len(eligible)) if eligible else 0.0

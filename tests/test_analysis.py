@@ -168,3 +168,15 @@ class TestPromptBlock:
 def test_all_six_states_analyse_without_error(status):
     metrics = analyse(decision(status=status), [], participants("MEMBER"))
     assert metrics.status == status
+
+
+def test_removed_participants_are_not_counted_as_eligible():
+    from aevum_ai.analysis import analyse
+    decision = {"id": "d", "title": "t", "status": "VOTING", "votingType": "SINGLE", "options": []}
+    participants = [
+        {"userId": "a", "role": "LEAD", "status": "ACTIVE"},
+        {"userId": "b", "role": "MEMBER", "status": "REMOVED"},
+        {"userId": "c", "role": "MEMBER"},
+    ]
+    m = analyse(decision=decision, tallies=[], participants=participants, ballots=[])
+    assert m.eligible_voters == 2

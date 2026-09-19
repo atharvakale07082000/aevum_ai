@@ -14,11 +14,13 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from . import cache as analysis_cache
 from .aevum_client import AevumClient, Caller, UpstreamError
 from .agents import analyst
 from .analysis import analyse
 from .config import settings
 from .schemas import ApiError, AskRequest
+from .streaming import router as ask_stream_router
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("aevum_ai")
@@ -36,6 +38,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+app.include_router(ask_stream_router)
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
@@ -122,6 +125,8 @@ async def health() -> dict[str, Any]:
         "model": (
             config.nim_model if config.model_provider == "nvidia" else config.model_id
         ) if configured else None,
+        # Counters only, never cached content.
+        "cache": {"entries": len(analysis_cache.get_cache()), **analysis_cache.get_cache().stats.as_dict()},
     }
 
 
@@ -132,8 +137,10 @@ async def summary(
     x_organization_id: str | None = Header(default=None),
 ):
     caller = _caller(authorization, x_organization_id)
-    metrics, decision, recent = await _load(decision_id, caller)
-    return await analyst.summarise(metrics, decision, recent)
+    # Cached per decision version; see cache.py for what a warm call still reads.
+    return await analysis_cache.panel(
+        decision_id, caller, "summary", _load, lambda s: analyst.summarise(s[0], s[1], s[2]),
+    )
 
 
 @app.post("/ai/decisions/{decision_id}/insight")
@@ -143,8 +150,9 @@ async def insight(
     x_organization_id: str | None = Header(default=None),
 ):
     caller = _caller(authorization, x_organization_id)
-    metrics, _decision, recent = await _load(decision_id, caller)
-    return await analyst.insight(metrics, recent)
+    return await analysis_cache.panel(
+        decision_id, caller, "insight", _load, lambda s: analyst.insight(s[0], s[2]),
+    )
 
 
 @app.post("/ai/decisions/{decision_id}/report")
@@ -154,8 +162,9 @@ async def report(
     x_organization_id: str | None = Header(default=None),
 ):
     caller = _caller(authorization, x_organization_id)
-    metrics, _decision, recent = await _load(decision_id, caller)
-    return await analyst.report(metrics, recent)
+    return await analysis_cache.panel(
+        decision_id, caller, "report", _load, lambda s: analyst.report(s[0], s[2]),
+    )
 
 
 @app.post("/ai/decisions/{decision_id}/ask")
@@ -166,8 +175,10 @@ async def ask(
     x_organization_id: str | None = Header(default=None),
 ):
     caller = _caller(authorization, x_organization_id)
-    metrics, decision, recent = await _load(decision_id, caller)
-    return await analyst.ask(metrics, decision, recent, body.question)
+    return await analysis_cache.panel(
+        decision_id, caller, "ask", _load,
+        lambda s: analyst.ask(s[0], s[1], s[2], body.question), question=body.question,
+    )
 
 
 def main() -> None:

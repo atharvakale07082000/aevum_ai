@@ -15,6 +15,9 @@ back to the client.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -103,6 +106,49 @@ class AevumClient:
             "timeline": timeline.get("data", []),
             "ballots": ballots.get("data", []) if ballots else None,
         }
+
+
+    async def decision_version(self, decision_id: str) -> str:
+        """A cheap, authorised fingerprint of the decision's current state.
+
+        Two small reads as the caller, in parallel:
+
+        - `GET /api/decisions/{id}` — the access check. It refuses exactly as
+          the full load would (403, or 404 for a draft the caller may not see),
+          and carries `updatedAt`, status and the option list.
+        - `GET /api/decisions/{id}/timeline?limit=5` — the newest events.
+
+        `updatedAt` alone is not a sufficient version. In the contract double,
+        adding a participant and changing a role do not touch it, although both
+        change the eligible-voter count and the role split; two votes can land
+        in the same millisecond; and whether the Java `VoteService.cast` bumps
+        `decisions.updated_at` is not stated in any spec we have. Every write
+        that changes the analysis does record a timeline event (VOTE_CAST,
+        OPTION_ADDED, PARTICIPANT_ADDED, PARTICIPANT_ROLE_CHANGED, the
+        lifecycle transitions), and the timeline is itself an input to the
+        prompt. Hashing the head of it alongside `updatedAt` gives a key that
+        changes whenever the analysis would.
+        """
+        timeout = httpx.Timeout(settings().request_timeout_seconds)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            decision, timeline = await asyncio.gather(
+                self._get(client, f"/api/decisions/{decision_id}"),
+                self._get(client, f"/api/decisions/{decision_id}/timeline?limit=5"),
+                return_exceptions=True,
+            )
+        # The decision read is the authority on access: its refusal wins.
+        for outcome in (decision, timeline):
+            if isinstance(outcome, BaseException):
+                raise outcome
+        fingerprint = {
+            "updatedAt": decision.get("updatedAt"),
+            "status": decision.get("status"),
+            "finalizedOptionId": decision.get("finalizedOptionId"),
+            "options": [o.get("id") for o in (decision.get("options") or [])],
+            "events": [(e.get("id"), e.get("occurredAt")) for e in (timeline.get("data") or [])],
+        }
+        digest = hashlib.sha256(json.dumps(fingerprint, sort_keys=True).encode()).hexdigest()[:16]
+        return f"{decision.get('updatedAt')}#{digest}"
 
 
 def _safe_json(response: httpx.Response) -> dict[str, Any]:
