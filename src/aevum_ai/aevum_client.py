@@ -123,7 +123,7 @@ class AevumClient:
         change the eligible-voter count and the role split; two votes can land
         in the same millisecond; and whether the Java `VoteService.cast` bumps
         `decisions.updated_at` is not stated in any spec we have. Every write
-        that changes the analysis does record a timeline event (VOTE_CAST,
+        that changes the analysis does record a timeline event (VOTE_CAST, VOTE_CHANGED,
         OPTION_ADDED, PARTICIPANT_ADDED, PARTICIPANT_ROLE_CHANGED, the
         lifecycle transitions), and the timeline is itself an input to the
         prompt. Hashing the head of it alongside `updatedAt` gives a key that

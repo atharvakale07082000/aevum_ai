@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Decision analysis for the Aevum platform, built on Strands Agents."
 requires-python = ">=3.11"
 dependencies = [
-  # openai: the NVIDIA NIM endpoint is OpenAI-compatible, and Strands'
+  # openai: the OpenRouter endpoint is OpenAI-compatible, and Strands'
   # OpenAIModel is what talks to it. anthropic: the alternate provider.
   "strands-agents[openai,anthropic]>=1.55,<2",
   "fastapi>=0.115",

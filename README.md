@@ -96,7 +96,7 @@ an analysis that is only true for the minute it was made.
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env           # then fill in AEVUM_AI_NVIDIA_API_KEY
+cp .env.example .env           # then fill in AEVUM_AI_OPENROUTER_API_KEY
 aevum-ai                       # or: uvicorn aevum_ai.app:app --port 8090
 ```
 
@@ -108,28 +108,25 @@ which should never need a key to run the suite.
 
 ```json
 { "status": "UP", "modelConfigured": true, "mode": "model",
-  "provider": "nvidia", "model": "nvidia/nemotron-3-super-120b-a12b" }
+  "provider": "openrouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free" }
 ```
 
-### NVIDIA NIM
+### OpenRouter
 
-The default provider, and the same endpoint, key and model the **ai-tutor**
-backend runs its Strands agents on — one key covers both services.
+The default provider. OpenRouter's endpoint is OpenAI-compatible.
 
 ```bash
-AEVUM_AI_MODEL_PROVIDER=nvidia
-AEVUM_AI_NVIDIA_API_KEY=nvapi-...
+AEVUM_AI_MODEL_PROVIDER=openrouter
+AEVUM_AI_OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
-`nim.py` subclasses Strands' `OpenAIModel` against NVIDIA's OpenAI-compatible
-endpoint and adds two throttles a free-tier key needs — a concurrency cap,
-because a decision room opens four panels at once, and a sliding-window bucket
-sized to the tier's 40 requests/minute. Without them a busy afternoon returns
-429 on all four panels simultaneously, which reads as the product being broken
-rather than as a quota.
+`openrouter.py` subclasses Strands' `OpenAIModel` against OpenRouter and adds
+two throttles a free-tier key needs — a concurrency cap, because a decision room
+opens four panels at once, and a sliding-window bucket sized to the free tier's
+20 requests/minute. Without them a busy afternoon returns 429 on all four panels
+simultaneously, which reads as the product being broken rather than as a quota.
 
-Three things carried over from ai-tutor that are not obvious and were expensive
-to learn there:
+Things that are not obvious and were expensive to learn:
 
 1. **The model is pinned for a reason.** Every job here asks the agent for
    *structured output* — a typed narrative, never free text. Models that chat
@@ -192,13 +189,13 @@ src/aevum_ai/
   analysis.py        every number the product shows. Pure functions, no model.
   schemas.py         wire contracts; errors reuse the backend's ApiError shape
   aevum_client.py    read-only client that borrows the caller's identity
-  nim.py             the NVIDIA NIM model, rate-limited on both entry points
+  openrouter.py      the OpenRouter model, rate-limited on both entry points
   config.py          environment
   app.py             FastAPI surface
   agents/analyst.py  the Strands agent: system prompt, four jobs, fallbacks
 tests/
   test_analysis.py   19 tests over the arithmetic
-  test_nim.py        11 over throttling, wiring, and the deterministic fallback
+  test_openrouter.py 11 over throttling, wiring, and the deterministic fallback
 ```
 
 ---

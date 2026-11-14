@@ -8,7 +8,7 @@ Three promises from the sprint task, each pinned here:
 2. Tokens then arrive as they are produced, and a `done` event carries the same
    structured answer the non-streaming endpoint returns.
 3. A client that goes away stops the generation. An orphaned model call keeps
-   spending quota (NIM's free tier is 40 rpm) on an answer nobody will read.
+   spending quota (OpenRouter's free tier is 20 rpm) on an answer nobody will read.
 
 Errors found before streaming starts — no bearer, the backend refusing the
 decision — stay ordinary JSON errors with their real status. A 200 stream that

@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: aevum-ai
+    runtime: python
+    plan: starter
+    buildCommand: pip install .
+    # settings().port reads AEVUM_AI_PORT (default 8090), not Render's $PORT,
+    # so the start command binds uvicorn to $PORT directly rather than going
+    # through main() / AEVUM_AI_PORT.
+    startCommand: uvicorn aevum_ai.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: AEVUM_AI_API_BASE_URL
+        value: https://REPLACE_WITH_AEVUM_BACKEND_RENDER_URL
+      - key: AEVUM_AI_MODEL_PROVIDER
+        value: openrouter
+      - key: AEVUM_AI_OPENROUTER_API_KEY
+        sync: false
+      - key: AEVUM_AI_OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: AEVUM_AI_OPENROUTER_MODEL
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
+      - key: AEVUM_AI_OPENROUTER_RPM_LIMIT
+        value: "20"
+      - key: AEVUM_AI_OPENROUTER_MAX_CONCURRENCY
+        value: "4"
+      - key: AEVUM_AI_MAX_TOKENS
+        value: "3000"
+      - key: AEVUM_AI_TEMPERATURE
+        value: "0.2"
+      - key: AEVUM_AI_CORS_ORIGIN
+        value: https://aevum-frontend-o2u6.onrender.com
+      - key: AEVUM_AI_REQUEST_TIMEOUT_SECONDS
+        value: "20"
+      - key: AEVUM_AI_ASK_STREAM_CHUNK_DELAY_MS
+        value: "120"

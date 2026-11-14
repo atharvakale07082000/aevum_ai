@@ -76,16 +76,16 @@ decides; you make the state of play legible.
 def _model():
     """The configured model, or None when the service runs analysis-only."""
     config = settings()
-    if config.model_provider == "nvidia":
-        if not config.nvidia_api_key:
+    if config.model_provider == "openrouter":
+        if not config.openrouter_api_key:
             # Misconfiguration, not an outage. Saying so and continuing beats
             # 503-ing every panel because one variable is missing — the figures
             # do not need a model and are the part that actually matters.
-            log.warning("model_provider=nvidia but no NVIDIA_API_KEY; falling back to deterministic output")
+            log.warning("model_provider=openrouter but no OPENROUTER_API_KEY; falling back to deterministic output")
             return None
-        from ..nim import get_nim_model
+        from ..openrouter import get_openrouter_model
 
-        return get_nim_model()
+        return get_openrouter_model()
     if config.model_provider == "anthropic":
         if not config.anthropic_api_key:
             log.warning("model_provider=anthropic but no API key; falling back to deterministic output")

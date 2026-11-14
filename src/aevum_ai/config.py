@@ -15,37 +15,35 @@ class Settings(BaseSettings):
     #: peer: it holds no database and no credentials of its own.
     api_base_url: str = "http://localhost:8080"
 
-    #: "nvidia", "anthropic" or "bedrock". Left unset, the service still
+    #: "openrouter", "anthropic" or "bedrock". Left unset, the service still
     #: answers — with measured numbers and template prose, marked
     #: source="deterministic". Every provider produces identical figures; only
     #: the prose around them changes.
-    model_provider: Literal["nvidia", "anthropic", "bedrock", "none"] = "none"
+    model_provider: Literal["openrouter", "anthropic", "bedrock", "none"] = "none"
 
-    # ── NVIDIA NIM (OpenAI-compatible) ──────────────────────────────────────
-    #: The same endpoint and model the ai-tutor backend runs its Strands agents
-    #: on, so one key covers both services.
-    nvidia_api_key: str | None = None
-    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    # ── OpenRouter (OpenAI-compatible) ──────────────────────────────────────
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     #: Do not swap this casually.
     #:
     #: Every job in this service asks the agent for STRUCTURED OUTPUT — a typed
-    #: narrative, never free text. The ai-tutor backend found that models which
-    #: chat perfectly well can still fail Strands' structured output and degrade
-    #: silently rather than raising, and that a chain-of-thought model will
-    #: spend the entire token budget deliberating and return nothing at all.
-    #: A replacement has to be checked against a real panel call, not a prompt.
-    nim_model: str = "nvidia/nemotron-3-super-120b-a12b"
+    #: narrative, never free text. Models that chat perfectly well can still
+    #: fail Strands' structured output and degrade silently rather than
+    #: raising, and a chain-of-thought model can spend the entire token budget
+    #: deliberating and return nothing at all. A replacement has to be checked
+    #: against a real panel call, not a prompt.
+    openrouter_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
-    #: NVIDIA's free tier is 40 requests/minute. Enforced by a sliding-window
-    #: bucket in nim.py, because the alternative is four panels returning 429
-    #: at once, which reads as the product being broken.
-    nim_rpm_limit: int = 40
+    #: OpenRouter's free models allow 20 requests/minute. Enforced by a
+    #: sliding-window bucket in openrouter.py, because the alternative is four
+    #: panels returning 429 at once, which reads as the product being broken.
+    openrouter_rpm_limit: int = 20
 
     #: Opening a decision room fires four generations within a second of each
-    #: other. Without a cap they queue inside NVIDIA rather than here, where at
-    #: least the wait is visible in a log line.
-    nim_max_concurrency: int = 4
+    #: other. Without a cap they queue at the provider rather than here, where
+    #: at least the wait is visible in a log line.
+    openrouter_max_concurrency: int = 4
 
     # ── Anthropic / Bedrock ─────────────────────────────────────────────────
     anthropic_api_key: str | None = None

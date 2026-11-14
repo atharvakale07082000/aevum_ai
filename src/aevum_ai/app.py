@@ -92,14 +92,23 @@ async def _load(decision_id: str, caller: Caller) -> tuple[Any, dict[str, Any], 
 def _recent(timeline: list[dict[str, Any]], participants: list[dict[str, Any]]) -> str:
     """The last few events, with actor ids resolved to names."""
     names = {p["userId"]: (p.get("displayName") or p.get("email") or "someone") for p in participants}
+    # Every TimelineEventType the backend writes (docs/Event_Catalog.md §84b in
+    # aevum_backend). A missing one would reach the model as a raw enum name.
     verbs = {
         "DECISION_CREATED": "opened the decision",
+        "DECISION_PUBLISHED": "published the decision",
+        "DECISION_ARCHIVED": "archived the decision",
         "OPTION_ADDED": "added an option",
         "PARTICIPANT_ADDED": "brought someone in",
+        "PARTICIPANT_ROLE_CHANGED": "changed someone's role",
         "VOTE_CAST": "voted",
+        "VOTE_CHANGED": "changed their vote",
         "VOTING_OPENED": "opened the ballot",
         "VOTING_LOCKED": "locked the ballot",
+        "VOTING_REOPENED": "reopened the ballot",
         "DECISION_FINALIZED": "finalized the decision",
+        "COMMENT_CREATED": "added to the discussion",
+        "COMMENT_DELETED": "removed a comment",
     }
     lines = []
     for event in timeline[:8]:
@@ -123,7 +132,7 @@ async def health() -> dict[str, Any]:
         # always answered by one of these two values being unexpected.
         "provider": config.model_provider if configured else None,
         "model": (
-            config.nim_model if config.model_provider == "nvidia" else config.model_id
+            config.openrouter_model if config.model_provider == "openrouter" else config.model_id
         ) if configured else None,
         # Counters only, never cached content.
         "cache": {"entries": len(analysis_cache.get_cache()), **analysis_cache.get_cache().stats.as_dict()},
