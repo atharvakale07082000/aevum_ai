@@ -1,16 +1,15 @@
 services:
   - type: web
     name: aevum-ai
-    runtime: python
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: starter
-    buildCommand: pip install .
-    # settings().port reads AEVUM_AI_PORT (default 8090), not Render's $PORT,
-    # so the start command binds uvicorn to $PORT directly rather than going
-    # through main() / AEVUM_AI_PORT.
-    startCommand: uvicorn aevum_ai.app:app --host 0.0.0.0 --port $PORT
+    # The Dockerfile binds uvicorn to Render's $PORT directly (settings().port
+    # reads AEVUM_AI_PORT, not $PORT).
+    healthCheckPath: /health
     envVars:
       - key: AEVUM_AI_API_BASE_URL
-        value: https://REPLACE_WITH_AEVUM_BACKEND_RENDER_URL
+        value: https://aevum-backend-upwc.onrender.com
       - key: AEVUM_AI_MODEL_PROVIDER
         value: openrouter
       - key: AEVUM_AI_OPENROUTER_API_KEY
